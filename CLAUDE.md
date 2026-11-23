@@ -296,26 +296,114 @@ Before processing the entire dataset with an LLM, test the extraction approach o
 
 ---
 
-# Current Work
+# Current State (checkpoint 2026-11-23)
 
-The notebook has reached the section:
+The counts in "Current Data", "Shoppable Video Labeling" and "Existing Baseline Model" above describe the original 645-video snapshot. They are superseded by this section.
 
-## Product Feature Engineering
+## Dataset state
 
-A dataframe called `missing_product_df` has been created containing the shoppable videos where order-derived product information is unavailable.
+- Refreshed Display API pull: **700 videos**. Order exports are deduplicated on `Order ID + SKU ID`, keeping the newest export.
+- **516** classified as Shop videos (manual labels plus `MANUAL_LABEL_CORRECTIONS`).
+- **465** mature Shop videos under the **30-day maturity rule** (a video counts only once 30 days have passed since posting).
+- Mature chronological split (`mature_split`): **372 development / 93 holdout**.
+- **The holdout must stay untouched** unless the user explicitly approves a final evaluation. It has been evaluated exactly once, for Model B.
+- Modeling export: `data/processed/shop_videos_modeling.csv` plus a column-role sidecar JSON. Inference features are prefixed `inf_*`, ground-truth-derived ones `gt_*`. Only `inf_*` features and pre-publication fields are model inputs.
+- Targets: `performance_tier` (0 orders = low, 1 = medium, 2+ = high) and `target_log1p_orders`.
+- Development evaluation uses **3 expanding-window folds** (validation blocks: Oct–Nov 2025, Dec 2025, Jan–May 2026).
 
-Approximately:
+## Modeling conclusions so far
 
-- 74 shoppable videos have product information through orders
-- 389 shoppable videos are missing product information
+- The 3-class low/medium/high formulation is weak.
+- **Model B** (caption TF-IDF + `log1p(duration)` + `inf_product_category`, class-weighted logistic regression) was the best first 3-class model. It only weakly beat trivial baselines and missed the high tier on the holdout.
+- **Two-stage experiment:** Stage 1 (sale vs no-sale) holds the only meaningful signal so far.
+  - **Stage 1 reference** = Model B's inputs, class-weighted logistic regression.
+  - Expanding-window pooled ROC-AUC is **~0.63**.
+  - Stage 2 (medium vs high among sales) shows no reliable ranking signal (AUC ~0.48).
+- Ridge regression on `log1p(orders)` did not beat simple baselines and showed little useful signal about order magnitude.
+- Caption-metadata features (B+) and simple seasonality flags did not meaningfully improve Stage 1.
+- Experiments use criteria fixed before fitting. For Stage 1 the bar is: pooled ROC-AUC up by at least 0.02, with sale recall and sale F1 each down by no more than 0.02.
 
-New columns have been created in `shop_videos_df`:
+## Product feature pipeline (frozen)
 
-- product_category
-- product_type
-- product_brand
+Product brand/type/category come from this hierarchy, in order:
+1. order-backed product data;
+2. manual overrides;
+3. deterministic rules (frozen v1 extractor);
+4. cached LLM fallback (`llm_product_extractions_v1.jsonl`, caption only, prompt fingerprint guarded);
+5. `unknown`.
 
-The next task is to design and test a method for filling these features.
+The 64-video product benchmark (frozen by ID) and its cache stay frozen unless explicitly versioned. `RUN_LLM = False`.
+
+## Multimodal content-feature experiment (v1)
+
+- **Schema:** frozen v1 with 16 fields, in `docs/content_feature_schema_v1.json` (fingerprint-checked) and `docs/content_feature_schema.md`.
+- **Benchmark:** 60 mature development videos were manually labeled.
+  - Frozen IDs: `data/processed/content_eval_v1_sample_ids.csv`.
+  - Labels: `data/processed/content_eval_v1_labels.xlsx`.
+  - Both are private and gitignored.
+- **Video files:** the local MP4s are in `data/raw/videos/<id>.mp4`. **They are private and must never be committed.**
+- **Local preparation** (no API):
+  - Frames are sampled with OpenCV: 7 frames over the first 3 s, then up to 8 spread over the rest, resized to 1024 px.
+  - Audio is decoded with PyAV and transcribed locally with faster-whisper `small`.
+  - Loudness and non-silent-time statistics are computed locally.
+  - Transcripts are cached in `data/processed/content_transcripts_v1.jsonl` (private).
+  - faster-whisper's own `decode_audio` is incompatible with PyAV 19, so the notebook uses `decode_audio_16k`.
+- **Extractor request:** caption, sampled frames, local transcript and audio statistics. Model `claude-opus-5-5`, effort `medium`, structured outputs.
+  - It **never** receives sales, orders, GMV, engagement, targets, manual benchmark labels or model predictions. The video ID isn't sent either.
+- **Cache:** `data/processed/content_extractions_content_v1_p1.jsonl`, append-only. Prompt fingerprint `92e5919f…`.
+  - It holds 60 first-pass records (replicate 1) and 15 stability records (replicate 2).
+  - `MAX_CONTENT_CALLS = 75` is now fully used.
+  - Measured cost is about $0.08 per video (about 16k input / 800 output tokens).
+- **Notebook switches** (all default False): `PREPARE_CONTENT_MEDIA`, `RUN_CONTENT_EXTRACTOR`, `RUN_CONTENT_SMOKE_TEST`, `SCORE_CONTENT_EXTRACTIONS`.
+
+## v1 extractor evaluation
+
+- **Agreement with the human labels:** 676/960 values = **70.4%** exact match.
+- **Stability:** a 15-video replicate run agreed with itself on 229/240 values = **95.4%**.
+- High stability with lower human agreement means the gaps are mostly **schema-definition disagreements**, not random extractor behavior.
+- **Approved for modeling:** `product_demo` (κ 0.82), `product_in_first_3s` (κ 0.76), `problem_solution` (κ 0.71).
+  - All three passed the pre-registered criteria: κ ≥ 0.60, coverage ≥ 80%, rarest value ≥ 5%. All three are highly stable.
+- **`audio_mode`:** fairly accurate (κ 0.62) and 100% stable, but needs value merging or local music detection before modeling.
+- **Do not use the other fields** without a v2 redesign.
+- **Do not tune v1 definitions** to this same 60-video benchmark and then report the new score as an unbiased evaluation. A v2 needs re-labeling under the new rules and a fresh labeled sample.
+
+## v1 limitations / future work (v2)
+
+- **content_format:** fuzzy boundaries, especially workout vs product demonstration for fitness equipment.
+- **hook_type:** `other` is too broad (half the human labels).
+- **social_proof:** the human labels count personal endorsement as a testimonial; the extractor reads "experience over time" strictly.
+- **creator_on_camera:** unclear whether hands count as "body".
+- **text_overlay:** the minimal vs substantial boundary is ambiguous (one persistent headline).
+- **cta_strength:** needs explicit rules (e.g. "link down below").
+- **product_visibility:** not useful enough (κ −0.10; screen time can't be judged from still frames).
+- **humor and benefit_focus:** too sparse or fragmented. `benefit_focus` largely repeats product category.
+- **audio_mode:** can't tell voiceover from speech over music with the current inputs.
+- **primary_mode:** has no value for "product displayed, nothing happening".
+
+## Exact next step when resuming (NOT started)
+
+Test whether the three validated semantic features improve Stage 1 sale-vs-no-sale prediction.
+
+Before any new API call or model fit:
+1. Inspect the current modeling dataset and the content-extraction cache.
+2. Count how many mature, development and holdout videos already have extractor outputs.
+3. Count how many more videos would need extraction.
+   - The v1 cache cap (75) is used up. Any further calls need an explicit, approved cap change under the same frozen prompt fingerprint.
+4. Estimate the API cost from actual v1 usage (~$0.08 per video).
+5. Plan a development-only ablation:
+   - Stage 1 reference;
+   - + `product_demo`;
+   - + `product_demo` and `product_in_first_3s`;
+   - + all three approved semantic features.
+6. Use **extractor outputs** as features, NEVER the human benchmark labels.
+7. Keep the holdout untouched.
+8. Define the improvement criterion before training.
+9. Stop after the plan, counts and cost estimate, and wait for approval.
+
+## Notebook-run conventions
+
+- Notebook outputs are stripped on commit by the local `nbstripout` git filter, set in `.git/info/attributes`. It isn't tracked, so re-run `nbstripout --install` in a fresh clone.
+- All API switches stay False in the committed notebook. API calls happen only after explicit user approval, with a capped number of calls and retries disabled.
 
 ---
 

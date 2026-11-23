@@ -1,0 +1,88 @@
+{
+  "schema_version": "content_v1",
+  "frozen": "2026-11-22",
+  "description": "Pre-publication semantic content features for TikTok Shop videos. Descriptive only: no outcome, engagement or sales information is used or extracted.",
+  "fields": {
+    "hook_type": {
+      "allowed": ["problem_question", "bold_claim_or_result", "product_reveal", "action_in_progress", "relatable_or_humor", "reply_to_comment", "direct_address", "other", "unclear"],
+      "definition": "Dominant attention device in the first 3 seconds (spoken, on-screen text, or visual).",
+      "sources": ["caption (partial)", "frames", "audio", "multimodal (best)"]
+    },
+    "content_format": {
+      "allowed": ["product_demo", "workout_integration", "talking_review", "unboxing_first_look", "before_after", "skit_or_humor", "lifestyle_montage", "comparison", "other", "unclear"],
+      "definition": "Overall structure of the whole video.",
+      "sources": ["frames", "audio", "multimodal (best)"]
+    },
+    "primary_mode": {
+      "allowed": ["mostly_demonstration", "mostly_talking", "balanced", "unclear"],
+      "definition": "More than 60% of runtime showing product use/action (demonstration) vs the creator talking; otherwise balanced.",
+      "sources": ["frames", "audio", "multimodal (best)"]
+    },
+    "product_demo": {
+      "allowed": ["yes", "no", "not_applicable", "unclear"],
+      "definition": "The product is visibly used for its function (not just held up). not_applicable = no product shown at all.",
+      "sources": ["frames"]
+    },
+    "problem_solution": {
+      "allowed": ["yes", "no", "unclear"],
+      "definition": "A specific problem or pain point is stated, then the product is presented as the fix.",
+      "sources": ["caption (partial)", "audio", "multimodal"]
+    },
+    "transformation": {
+      "allowed": ["none", "claimed", "shown", "unclear"],
+      "definition": "Before/after or results: claimed = only said or written; shown = both states visibly shown.",
+      "sources": ["caption (claimed only)", "frames (shown)", "audio (claimed)", "multimodal"]
+    },
+    "creator_on_camera": {
+      "allowed": ["face_visible", "body_only", "not_visible", "unclear"],
+      "definition": "Highest level of creator visibility at any point in the video.",
+      "sources": ["frames"]
+    },
+    "product_visibility": {
+      "allowed": ["not_shown", "brief", "prominent", "unclear"],
+      "definition": "brief = product in frame for under about 25% of runtime; prominent = in frame for most of the video.",
+      "sources": ["frames"]
+    },
+    "product_in_first_3s": {
+      "allowed": ["yes", "no", "unclear"],
+      "definition": "Product visible within the first 3 seconds.",
+      "sources": ["frames"]
+    },
+    "cta_strength": {
+      "allowed": ["none", "soft", "direct", "unclear"],
+      "definition": "soft = recommend/check it out; direct = explicit buying pointer (link, orange cart, tap, buy, get yours). Spoken, on-screen, or in the caption.",
+      "sources": ["caption", "frames (on-screen text)", "audio", "multimodal (best)"]
+    },
+    "urgency_scarcity": {
+      "allowed": ["none", "time_limited", "stock_limited", "unclear"],
+      "definition": "Time pressure (sale ends, Black Friday deadline) or limited stock (only a few left). Pick the strongest if both.",
+      "sources": ["caption", "frames", "audio", "multimodal"]
+    },
+    "social_proof": {
+      "allowed": ["none", "creator_testimonial", "third_party", "unclear"],
+      "definition": "creator_testimonial = the creator's own experience over time; third_party = reviews, ratings, number sold, or other people's results.",
+      "sources": ["caption (partial)", "audio", "multimodal"]
+    },
+    "benefit_focus": {
+      "allowed": ["performance_results", "convenience_at_home", "price_value", "look_style", "comfort_feel", "scent", "health_wellness", "none_unclear"],
+      "definition": "The single main benefit pitched.",
+      "sources": ["caption (partial)", "audio", "multimodal"]
+    },
+    "humor": {
+      "allowed": ["yes", "no", "unclear"],
+      "definition": "The video is intended to be funny (joke, skit, comedic exaggeration), not merely upbeat.",
+      "sources": ["caption (weak)", "frames", "audio", "multimodal (best)"]
+    },
+    "audio_mode": {
+      "allowed": ["on_camera_speech", "voiceover", "music_only", "mixed", "no_audio_or_unclear"],
+      "definition": "Dominant audio track.",
+      "sources": ["audio"]
+    },
+    "text_overlay": {
+      "allowed": ["none", "minimal", "substantial", "unclear"],
+      "definition": "minimal = one short label; substantial = headline/hook text, multiple lines, or burned-in captions.",
+      "sources": ["frames"]
+    }
+  },
+  "audit_fields_not_model_inputs": ["evidence", "overall_confidence", "modalities_used", "schema_version", "prompt_fingerprint"]
+}
